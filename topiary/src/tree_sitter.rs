@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use serde::Serialize;
 use tree_sitter_facade::{
     InputEdit, Language, Node, Parser, Point, Query, QueryCapture, QueryCursor, QueryPredicate,
-    Tree,
+    Tree, TreeCursor,
 };
 
 use crate::{
@@ -96,7 +96,80 @@ fn find_comments<'a>(node: Node<'a>, comments: &mut Vec<Node<'a>>) -> () {
     }
 }
 
-fn anchor(comment: Node, stream: &mut CommentStream) -> () {}
+enum Anchor<T> {
+    AnchorBefore(T),
+    AnchorAfter(T),
+}
+
+fn next_non_comment(node: Node) -> Option<Node> {
+    let temp_node = node;
+    while let Some(temp_node) = temp_node.next_sibling() {
+        if !is_comment(&temp_node) {
+            return Some(temp_node);
+        }
+    };
+    None
+}
+
+fn previous_non_comment(node: Node) -> Option<Node> {
+    let temp_node = node;
+    while let Some(temp_node) = temp_node.prev_sibling() {
+        if !is_comment(&temp_node) {
+            return Some(temp_node);
+        }
+    };
+    None
+}
+
+// Use the following heuristics to find a comment's anchor:
+// If the comment is only prefixed by blank symbols on its line, then the anchor is the
+// next non-comment sibling node.
+// Otherwise, the anchor is the previous non-comment sibling node.
+// If there is no such node, we anchor to the first non-comment sibling node
+// in the other direction.
+fn find_anchor<'a>(
+    node: Node,
+    input: &str,
+) -> FormatterResult<Anchor<Node<'a>>> {
+    let point = node.start_position();
+    let mut lines = input.lines();
+    let prefix = lines
+        .nth(point.row() as usize)
+        .map(|line| &line[..point.column() as usize])
+        .ok_or_else(|| {
+            FormatterError::Internal(
+                format!(
+                    "Trying to access nonexistent line {} in text:\n{}",
+                    point.row(),
+                    input,
+                ),
+                None,
+            )
+        })?;
+    if prefix.trim_start() == "" {
+        if let Some(anchor) = next_non_comment(node) {
+            return Ok(Anchor::AnchorAfter(anchor))
+        } else if let Some(anchor) = previous_non_comment(node) {
+            return Ok(Anchor::AnchorBefore(anchor))
+        } else {
+            return Err(FormatterError::Internal(
+                format!("Could find no anchor for comment {node:?}", ),
+                None,
+            ))
+        }
+    } else {
+        if let Some(anchor) = previous_non_comment(node) {
+            return Ok(Anchor::AnchorBefore(anchor))
+        } else if let Some(anchor) = next_non_comment(node) {
+            return Ok(Anchor::AnchorAfter(anchor))
+        } else {
+            return Err(FormatterError::Internal(
+                format!("Could find no anchor for comment {node:?}", ),
+                None,
+            ))
+        }
+    }
+}
 
 // TODO: store comments instead of discarding them
 fn extract_comments<'a>(
@@ -104,6 +177,7 @@ fn extract_comments<'a>(
     input: &str,
     grammar: &Language,
 ) -> FormatterResult<(Tree, String)> {
+    // let mut comment_stream: CommentStream = CommentStream::new();
     let mut comments: Vec<Node> = Vec::new();
     let mut new_input: String = input.to_string();
     let mut new_tree: Tree = tree;
@@ -112,6 +186,14 @@ fn extract_comments<'a>(
     comments.reverse();
     let mut edits: Vec<InputEdit> = Vec::new();
     for node in comments {
+        match find_anchor(node, input)? {
+            Anchor::AnchorBefore(anchor) => {
+                log::debug!("Anchor precedes comment {node:?}:\n{anchor:?}")
+            },
+            Anchor::AnchorAfter(anchor) => {
+                log::debug!("Anchor follows comment {node:?}:\n{anchor:?}")
+            },
+        }
         new_input.replace_range((node.start_byte() as usize)..(node.end_byte() as usize), "");
         let edit = InputEdit::new(
             node.start_byte(),
