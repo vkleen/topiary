@@ -129,7 +129,7 @@ async fn run() -> CLIResult<()> {
         )
     })?;
 
-    let grammars = language.grammars().await?;
+    let grammar = language.grammar().await?;
 
     let operation = if let Some(visualisation) = args.visualise {
         Operation::Visualise {
@@ -146,7 +146,7 @@ async fn run() -> CLIResult<()> {
         &mut output,
         &query,
         language,
-        &grammars,
+        &grammar,
         operation,
     )?;
 
