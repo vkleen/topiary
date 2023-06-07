@@ -2,26 +2,12 @@ use std::fs;
 use std::io::BufReader;
 use std::path::Path;
 
-use prettydiff::text::{diff_lines, ContextConfig};
 use test_log::test;
 
-use topiary::{apply_query, formatter, Configuration, FormatterError, Language, Operation};
-
-fn pretty_assert_eq(v1: &str, v2: &str) {
-    if v1 != v2 {
-        let diff = diff_lines(v1, v2);
-        panic!(
-            "\n{}",
-            diff.format_with_context(
-                Some(ContextConfig {
-                    context_size: 2,
-                    skipping_marker: "...",
-                }),
-                true,
-            )
-        )
-    }
-}
+use topiary::{
+    apply_query, formatter, test_utils::pretty_assert_eq, Configuration, FormatterError, Language,
+    Operation,
+};
 
 #[test(tokio::test)]
 async fn input_output_tester() {
@@ -56,6 +42,7 @@ async fn input_output_tester() {
                 &grammars,
                 Operation::Format {
                     skip_idempotence: false,
+                    tolerate_parse_errors: false,
                 },
             )
             .unwrap();
@@ -94,6 +81,7 @@ async fn formatted_query_tester() {
             &grammars,
             Operation::Format {
                 skip_idempotence: false,
+                tolerate_parse_errors: false,
             },
         )
         .unwrap();
@@ -125,7 +113,7 @@ async fn exhaustive_query_tester() {
 
         let grammars = language.grammars().await.unwrap();
 
-        apply_query(&input_content, &query_content, &grammars, true).unwrap_or_else(|e| {
+        apply_query(&input_content, &query_content, &grammars, false, true).unwrap_or_else(|e| {
             if let FormatterError::PatternDoesNotMatch(_) = e {
                 panic!("Found untested query in file {query_file:?}:\n{e}");
             } else {

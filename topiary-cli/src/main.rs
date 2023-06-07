@@ -64,6 +64,10 @@ struct Args {
     /// Do not check that formatting twice gives the same output
     #[arg(short, long, display_order = 7)]
     skip_idempotence: bool,
+
+    /// Format as much as possible even if some of the input causes parse errors
+    #[arg(short, long, display_order = 8)]
+    tolerate_parse_errors: bool,
 }
 
 #[tokio::main]
@@ -138,6 +142,7 @@ async fn run() -> CLIResult<()> {
     } else {
         Operation::Format {
             skip_idempotence: args.skip_idempotence,
+            tolerate_parse_errors: args.tolerate_parse_errors,
         }
     };
 
