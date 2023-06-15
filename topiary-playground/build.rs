@@ -54,9 +54,7 @@ fn main() {
             if !Configuration::parse_default_config()
                 .known_extensions()
                 .contains(&*ext)
-                || ext == "mli"
             {
-                // skip ocaml.mli, keep ocaml.ml
                 continue;
             }
 
