@@ -87,8 +87,8 @@ pub enum Atom {
         scope_id: String,
         spaced: bool,
     },
-    // Represents an atom that must only be output if the associated scope meets the condition
-    // (single-line or multi-line)
+    /// Represents an atom that must only be output if the associated scope meets the condition
+    /// (single-line or multi-line)
     ScopedConditional {
         id: usize,
         scope_id: String,
@@ -97,9 +97,13 @@ pub enum Atom {
     },
 }
 
+/// Used in `Atom::ScopedConditional` to apply the containing Atoms only if
+/// the matched node spans a single line or multiple lines
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScopeCondition {
+    /// The Atom is only applied the the matching node spans exactly one line
     SingleLineOnly,
+    /// The Atom is only applied the the matching node spans two or more lines
     MultiLineOnly,
 }
 
@@ -109,7 +113,14 @@ pub type FormatterResult<T> = std::result::Result<T, FormatterError>;
 /// Operations that can be performed by the formatter.
 #[derive(Clone, Copy, Debug)]
 pub enum Operation {
-    Format { skip_idempotence: bool },
+    /// Formatting is the default operation of the formatter, it applies the
+    /// formatting rules defined in the query file and outputs the result
+    Format {
+        /// If true, skips the idempotence check (where we format twice,
+        /// succeeding only if the intermediate and final result are identical)
+        skip_idempotence: bool,
+    },
+    /// Visualises the parsed file's tree-sitter tree
     Visualise { output_format: Visualisation },
 }
 
@@ -208,19 +219,29 @@ pub fn formatter(
     Ok(())
 }
 
+/// Simple helper function to read the full content of an io Read stream
 fn read_input(input: &mut dyn io::Read) -> Result<String, io::Error> {
     let mut content = String::new();
     input.read_to_string(&mut content)?;
     Ok(content)
 }
 
+/// Trim whitespace from the end of each line,
+/// then trim any leading/trailing new lines,
+/// finally reinstate the new line at EOF.
 fn trim_whitespace(s: &str) -> String {
-    // Trim whitespace from the end of each line,
-    // then trim any leading/trailing new lines,
-    // finally reinstate the new line at EOF.
     format!("{}\n", s.lines().map(str::trim_end).join("\n").trim())
 }
 
+/// Perform the idempotence check. Given the already formatted content of the
+/// file, formats the content again and checks if the two are identical.
+/// Result in: `Ok(())`` if the idempotence check succeeded (the content is
+/// identical to the formatted content)
+///
+/// # Errors
+///
+/// `Err(FormatterError::Idempotence)` if the idempotence check failed
+/// `Err(FormatterError::Formatting(...))` if the formatting failed
 fn idempotence_check(
     content: &str,
     query: &str,
@@ -271,6 +292,7 @@ mod test {
     use crate::{configuration::Configuration, error::FormatterError, formatter, Operation};
     use test_log::test;
 
+    /// Attempt to parse invalid json, expecting a failure
     #[test(tokio::test)]
     async fn parse_error_fails_formatting() {
         let mut input = "[ 1, % ]".as_bytes();
